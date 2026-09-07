@@ -222,6 +222,13 @@ Resources:
       RouteKey: rematch
       Target: !Sub "integrations/${GameIntegration}"
 
+  ChangeCharactersRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: changeCharacters
+      Target: !Sub "integrations/${GameIntegration}"
+
   LeaveRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
@@ -242,6 +249,7 @@ Resources:
       - SelectCharacterRoute
       - SubmitActionRoute
       - RematchRoute
+      - ChangeCharactersRoute
       - LeaveRoute
     Properties:
       ApiId: !Ref WebSocketApi

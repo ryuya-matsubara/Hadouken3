@@ -106,11 +106,19 @@ async function handleDisconnect(event) {
     await rooms.deleteConnection(connectionId);
     const room = await rooms.getRoom(conn.roomId);
     if (!room) return ok();
-    // Notify the opponent that this player disconnected.
+    // A disconnect (including one caused by a network/comms error) frees the
+    // room so its 4-digit code can be reused immediately. Notify the opponent
+    // that the other player left, then delete the room.
     const oppSlot = conn.slot === 1 ? 2 : 1;
-    await sendToSlot(endpoint, room, oppSlot, "opponentDisconnected", {
+    await sendToSlot(endpoint, room, oppSlot, "opponentLeft", {
       slot: conn.slot,
     });
+    await rooms.deleteRoom(conn.roomId);
+    // Also drop the opponent's connection record so it isn't left dangling.
+    const oppConn = oppSlot === 1 ? room.p1Conn : room.p2Conn;
+    if (oppConn) {
+      try { await rooms.deleteConnection(oppConn); } catch (e) {}
+    }
   } catch (err) {
     logError("disconnect", err);
   }
@@ -362,6 +370,31 @@ async function handleRematch(event) {
   return ok();
 }
 
+// Reset a finished room back to character select so both players can pick a
+// new character before the next match.
+async function handleChangeCharacters(event) {
+  const endpoint = endpointFromEvent(event);
+  const caller = await resolveCaller(event);
+  if (!caller) {
+    await sendError(endpoint, event.requestContext.connectionId, "no_room", "ルームに参加していません");
+    return ok();
+  }
+  try {
+    const room = await rooms.resetForCharSelect(caller.roomId);
+    await broadcastState(endpoint, room, "charSelectReset");
+  } catch (err) {
+    if (err.name === "ConditionalCheckFailedException") {
+      // Already reset by the other player; just push current state.
+      const room = await rooms.getRoom(caller.roomId);
+      if (room) await broadcastState(endpoint, room, "charSelectReset");
+    } else {
+      logError("changeCharacters", err);
+      await sendError(endpoint, caller.connectionId, "server_error", "キャラ選び直しに失敗しました");
+    }
+  }
+  return ok();
+}
+
 async function handleLeave(event) {
   const endpoint = endpointFromEvent(event);
   const caller = await resolveCaller(event);
@@ -402,6 +435,8 @@ exports.handler = async (event) => {
         return await handleSubmitAction(event, body);
       case "rematch":
         return await handleRematch(event);
+      case "changeCharacters":
+        return await handleChangeCharacters(event);
       case "leave":
         return await handleLeave(event);
       default: {

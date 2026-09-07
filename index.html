@@ -94,6 +94,21 @@
   .player-card.p1 { border-color: rgba(255,107,107,0.4); }
   .player-card.p2 { border-color: rgba(79,195,247,0.4); }
   .player-card.active { box-shadow: 0 0 0 2px var(--accent), 0 0 18px rgba(255,138,0,0.4); }
+  /* In online mode, the player's OWN card is highlighted more strongly so it is
+     obvious at a glance which side is you. */
+  .player-card.self {
+    background: #202a3d;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent), 0 0 22px rgba(255,138,0,0.55);
+  }
+  .player-card.self.active {
+    box-shadow: 0 0 0 3px var(--accent), 0 0 30px rgba(255,138,0,0.85);
+  }
+  .player-card.self .player-name::after {
+    content: " (You)";
+    font-size: 0.72rem;
+    color: var(--accent);
+  }
   .player-name { font-weight: bold; font-size: 1rem; margin-bottom: 4px; }
   .p1 .player-name { color: var(--p1); }
   .p2 .player-name { color: var(--p2); }
@@ -488,7 +503,7 @@
     <div class="card home-card">
       <p class="home-lead">プレイヤー同士の読み合い対戦<br>相手のHPを0にした方が勝ち！</p>
       <div class="mode-btns">
-        <button class="big-btn" id="startBtn">🎮 ローカル対戦（1台で交代）</button>
+        <button class="big-btn" id="startBtn">🎮 ローカル対戦</button>
         <button class="big-btn secondary" id="onlineBtn">🌐 オンライン対戦</button>
       </div>
 
@@ -496,10 +511,10 @@
         <div class="hr-item"><b>🟢 HP</b>／3つからスタート。0になったら負け</div>
         <div class="hr-item"><b>🟠 エネルギー</b>／最大3つ。ブラストや必殺技で消費</div>
         <div class="hr-item"><b>【アクション】</b></div>
-        <div class="hr-item"><b>チャージ</b>／エネルギーを1溜める</div>
-        <div class="hr-item"><b>ブラスト</b>／エネルギー1消費。相手がチャージ中なら1ダメージ・ガードで防がれる</div>
-        <div class="hr-item"><b>ガード</b>／ブラストを防ぐ</div>
-        <div class="hr-item"><b>必殺技</b>／キャラクター固有</div>
+        <div class="hr-item">・<b>チャージ</b>／エネルギーを1溜める</div>
+        <div class="hr-item">・<b>ブラスト</b>／エネルギー1消費。相手がチャージ中なら1ダメージ・ガードで防がれる</div>
+        <div class="hr-item">・<b>ガード</b>／ブラストを防ぐ</div>
+        <div class="hr-item">・<b>必殺技</b>／キャラクター固有</div>
       </div>
     </div>
   </div>
@@ -625,6 +640,7 @@
       <div class="winner-text" id="winnerText"></div>
       <div class="winner-sub" id="winnerSub"></div>
       <button class="big-btn" id="restartBtn">もう一度あそぶ</button>
+      <button class="big-btn secondary" id="reselectBtn">キャラを選び直す</button>
       <button class="big-btn secondary" id="resultHomeBtn">ホームに戻る</button>
     </div>
   </div>
@@ -805,6 +821,11 @@ function goHome() {
   $("turnBanner").textContent = "";
   $("onlineStatus").textContent = "";
   $("app").classList.remove("online");
+  // Reset player-card labels/highlight back to the local-mode defaults.
+  $("name1").textContent = "プレイヤー1";
+  $("name2").textContent = "プレイヤー2";
+  $("card1").classList.remove("self");
+  $("card2").classList.remove("self");
   hideWaitOverlay();
   setReadyBadge(1, false); setReadyBadge(2, false);
   showScreen("home");
@@ -831,6 +852,22 @@ function playAgain() {
   initState();
   state.char = keepChar;
   startTurn();
+}
+
+// Re-select characters after a result (both players pick again).
+function reselectChars() {
+  if (state.mode === "online") {
+    // Ask the server to reset the room back to character select. Both clients
+    // will receive "charSelectReset" and re-enter the selection screen.
+    Online.changeCharacters();
+    $("reselectBtn").disabled = true;
+    $("restartBtn").disabled = true;
+    $("winnerSub").textContent = "キャラ選択に戻っています…";
+    return;
+  }
+  battleToken++;
+  initState();
+  goToCharSelect(1);
 }
 
 const $ = (id) => document.getElementById(id);
@@ -1529,11 +1566,14 @@ function setConnPill(cls, text) {
   pill.className = "conn-pill " + cls;
   $("connText").textContent = text;
 }
-// Label the two player cards for online play: our own slot shows "あなた".
+// Label the two player cards for online play: "Player1" / "Player2". The
+// player's own card gets a "self" class so it is highlighted more strongly.
 function labelPlayersForOnline() {
   const me = Online.slot;
-  $("name1").textContent = me === 1 ? "プレイヤー1（あなた）" : "プレイヤー1（相手）";
-  $("name2").textContent = me === 2 ? "プレイヤー2（あなた）" : "プレイヤー2（相手）";
+  $("name1").textContent = "Player1";
+  $("name2").textContent = "Player2";
+  $("card1").classList.toggle("self", me === 1);
+  $("card2").classList.toggle("self", me === 2);
 }
 
 // The Online controller: owns the WebSocket, the room/slot, and translates
@@ -1581,11 +1621,19 @@ const Online = (function () {
     });
     ws.addEventListener("close", () => {
       if (intentionalClose) { setConnPill("disconnected", "切断"); return; }
-      setConnPill("disconnected", "切断（再接続中…）");
-      // Best-effort reconnect while we still have a room.
-      if (roomId) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(() => connect(), 2000);
+      // A comms-error disconnect frees the room server-side (its code becomes
+      // reusable). We therefore do NOT silently reconnect into a dead room;
+      // instead we tear down the local session and return the player home.
+      setConnPill("disconnected", "切断");
+      clearTimeout(reconnectTimer);
+      const hadRoom = !!roomId;
+      roomId = null;
+      slot = null;
+      if (hadRoom && typeof toast === "function") {
+        toast("接続が切れました。ルームを終了します。");
+      }
+      if (hadRoom && typeof goHome === "function") {
+        setTimeout(() => goHome(), 1200);
       }
     });
     ws.addEventListener("error", () => { /* close handler manages UI */ });
@@ -1620,6 +1668,7 @@ const Online = (function () {
   // "action" route-selection field used by API Gateway.
   function submitAction(move) { send("submitAction", { move, turn: state.turn }); }
   function rematch() { send("rematch"); }
+  function changeCharacters() { send("changeCharacters"); }
   function leaveAndClose() {
     if (ws && ws.readyState === WebSocket.OPEN && roomId) {
       intentionalClose = true;
@@ -1679,10 +1728,10 @@ const Online = (function () {
       }
       case "opponentReady": {
         applyRoomState(msg.room);
-        // Show that the opponent has chosen (without revealing the action).
+        // The opponent has chosen; do not surface a textual notice (the ready
+        // badge on their card already conveys this without being noisy).
         const opp = slot === 1 ? 2 : 1;
         setReadyBadge(opp, true);
-        $("onlineStatus").textContent = "相手がアクションを選択しました";
         break;
       }
       case "turnResult": {
@@ -1698,6 +1747,14 @@ const Online = (function () {
         $("restartBtn").disabled = false;
         toast("再戦スタート！", "info");
         startTurnOnline();
+        break;
+      }
+      case "charSelectReset": {
+        applyRoomState(msg.room);
+        $("restartBtn").disabled = false;
+        $("reselectBtn").disabled = false;
+        toast("キャラクターを選び直してください", "info");
+        enterOnlineCharSelect();
         break;
       }
       case "opponentDisconnected": {
@@ -1747,7 +1804,7 @@ const Online = (function () {
   return {
     slot: null,
     isConfigured,
-    createRoom, joinRoom, selectCharacter, submitAction, rematch, leaveAndClose,
+    createRoom, joinRoom, selectCharacter, submitAction, rematch, changeCharacters, leaveAndClose,
     get roomId() { return roomId; },
   };
 })();
@@ -1783,7 +1840,7 @@ function enterOnlineCharSelect() {
   // Render the character grid; selection targets OUR slot on the server.
   state.currentPlayer = Online.slot;
   goToCharSelect(Online.slot);
-  $("charPrompt").textContent = "キャラクターを選択（あなた）";
+  $("charPrompt").textContent = "キャラクターを選択";
 }
 
 // Begin a turn in online mode: open OUR action-select screen only.
@@ -1809,6 +1866,7 @@ $("fightBtn").addEventListener("click", () => runBattle());
 $("nextTurnBtn").addEventListener("click", () => goNextTurn());
 $("startBtn").addEventListener("click", () => startGame());
 $("restartBtn").addEventListener("click", () => playAgain());
+$("reselectBtn").addEventListener("click", () => reselectChars());
 $("resultHomeBtn").addEventListener("click", () => goHome());
 $("homeBtn").addEventListener("click", () => goHome());
 

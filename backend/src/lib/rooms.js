@@ -301,6 +301,36 @@ async function resetForRematch(roomId) {
   return res.Attributes;
 }
 
+// Reset a finished room back to CHARACTER SELECT, clearing both players'
+// chosen characters and stats. Lets both players pick a new character for the
+// next match. Conditional on being finished so it only triggers once.
+async function resetForCharSelect(roomId) {
+  const stats = engine.initialStats();
+  const res = await doc.send(
+    new UpdateCommand({
+      TableName: ROOMS_TABLE,
+      Key: { roomId },
+      UpdateExpression:
+        "SET #s = :charselect, p1Char = :null, p2Char = :null, hp = :hp, energy = :en, #turn = :one, actions = :empty, winner = :null, #ttl = :ttl ADD version :incr",
+      ConditionExpression: "#s = :finished",
+      ExpressionAttributeNames: { "#s": "status", "#turn": "turn", "#ttl": "ttl" },
+      ExpressionAttributeValues: {
+        ":charselect": "charselect",
+        ":finished": "finished",
+        ":null": null,
+        ":hp": stats.hp,
+        ":en": stats.energy,
+        ":one": 1,
+        ":empty": {},
+        ":incr": 1,
+        ":ttl": roomTtl(),
+      },
+      ReturnValues: "ALL_NEW",
+    })
+  );
+  return res.Attributes;
+}
+
 async function deleteRoom(roomId) {
   await doc.send(
     new DeleteCommand({ TableName: ROOMS_TABLE, Key: { roomId } })
@@ -319,5 +349,6 @@ module.exports = {
   recordAction,
   commitResolvedTurn,
   resetForRematch,
+  resetForCharSelect,
   deleteRoom,
 };

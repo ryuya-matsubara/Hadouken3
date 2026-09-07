@@ -48,9 +48,14 @@ class Client {
     });
   }
   open() {
+    // The socket starts connecting in the constructor, so it may already be
+    // OPEN by the time this is awaited. Resolve immediately in that case to
+    // avoid missing the 'open' event.
+    if (this.ws.readyState === WebSocket.OPEN) return Promise.resolve();
     return new Promise((resolve, reject) => {
-      this.ws.once('open', resolve);
-      this.ws.once('error', reject);
+      const to = setTimeout(() => reject(new Error(`${this.label}: open timeout`)), 12000);
+      this.ws.once('open', () => { clearTimeout(to); resolve(); });
+      this.ws.once('error', (e) => { clearTimeout(to); reject(e); });
     });
   }
   send(action, extra) {
@@ -184,6 +189,37 @@ try {
     rematchA.room.hp['1'] === 3 && rematchA.room.hp['2'] === 3
     && rematchB.room.hp['1'] === 3 && rematchB.room.hp['2'] === 3);
 
+  // --- Play to a finish again so we can test "change characters" ---
+  {
+    let fin = false, lrA = rematchA.room, lrB = rematchB.room, turn = rematchA.room.turn;
+    for (let i = 0; i < 40 && !fin; i++) {
+      const p1Move = lrA.energy['1'] >= 3 ? 'special' : 'charge';
+      a.send('submitAction', { move: p1Move, turn });
+      b.send('submitAction', { move: 'charge', turn });
+      const rA = await a.waitFor('turnResult');
+      await b.waitFor('turnResult');
+      lrA = rA.room; fin = rA.result.finished; turn = rA.result.nextTurn;
+    }
+    check('second game also finishes (pre-condition for change chars)', fin === true);
+  }
+
+  // --- Change characters: room resets to charselect, characters cleared ---
+  a.send('changeCharacters');
+  const csA = await a.waitFor('charSelectReset');
+  const csB = await b.waitFor('charSelectReset');
+  check('changeCharacters resets both clients to charselect',
+    csA.room.status === 'charselect' && csB.room.status === 'charselect');
+  check('changeCharacters clears both chosen characters',
+    csA.room.chars['1'] === null && csA.room.chars['2'] === null);
+  check('changeCharacters resets HP to 3/3',
+    csA.room.hp['1'] === 3 && csA.room.hp['2'] === 3);
+  // Re-pick and confirm the game can start again.
+  a.send('selectCharacter', { charId: 'blaze' });
+  b.send('selectCharacter', { charId: 'angel' });
+  const restart = await a.waitFor('battleStart');
+  check('can start a new match with new characters after change',
+    restart.room.status === 'playing' && restart.room.chars['1'] === 'blaze');
+
   // --- Error handling: invalid room code is rejected ---
   const c = new Client('P3');
   await c.open();
@@ -191,6 +227,25 @@ try {
   const err = await c.waitFor('error');
   check('invalid room code returns an error', err.type === 'error' && err.code === 'bad_room_code');
   c.close();
+
+  // --- Disconnect frees the room code (comms-error scenario) ---
+  // Create a room, then abruptly drop the socket (simulating a network error).
+  // The server should tear the room down so the same code is reusable.
+  const freeCode = String(Math.floor(1000 + Math.random() * 9000));
+  const d1 = new Client('D1');
+  await d1.open();
+  d1.send('createRoom', { roomId: freeCode });
+  await d1.waitFor('roomCreated');
+  d1.ws.terminate ? d1.ws.terminate() : d1.close(); // hard drop = comms error
+  await sleep(3000); // allow $disconnect to process + room deletion
+  const d2 = new Client('D2');
+  await d2.open();
+  d2.send('createRoom', { roomId: freeCode });
+  // If the room was freed, we get roomCreated (not a room_exists error).
+  const reuse = await d2.waitFor((m) => m.type === 'roomCreated' || m.type === 'error');
+  check('room code is reusable after a disconnect (room freed server-side)',
+    reuse.type === 'roomCreated');
+  d2.close();
 } catch (e) {
   console.error('E2E error:', e && e.stack ? e.stack : e);
   check(`no unexpected exception (${e && e.message})`, false);
