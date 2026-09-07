@@ -58,3 +58,30 @@
 
 - 依存ライブラリなしの単一 HTML ファイル（HTML + CSS + Vanilla JS）。
 - ビルド不要。`index.html` を開くだけで動作します。
+
+
+## デプロイ（AWS）
+
+静的サイトとして **S3 + CloudFront** にデプロイできます（バケットは非公開、
+CloudFront の OAC 経由でのみ配信）。手順とスクリプトは [`deploy/`](deploy/) に
+あります。
+
+```bash
+# アセットの同期 + キャッシュ無効化（インフラ構築済みの場合）
+./deploy/deploy.sh
+```
+
+初回のインフラ構築（S3 / OAC / CloudFront / バケットポリシー）は
+[`deploy/README.md`](deploy/README.md) を参照してください。
+
+## E2E テスト
+
+デプロイ済みサイトに対する Playwright ベースの E2E を [`e2e/`](e2e/) に用意して
+います。ホーム → キャラ選択 → 対戦 → 勝敗表示までを実際に操作して検証します。
+
+```bash
+cd e2e
+npm install
+npx playwright install chromium
+SITE_URL=https://<distribution>.cloudfront.net/ npm test
+```
