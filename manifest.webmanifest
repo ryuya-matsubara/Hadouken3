@@ -1,0 +1,25 @@
+{
+  "name": "Hadouken Battle",
+  "short_name": "Hadouken",
+  "description": "プレイヤー1 vs プレイヤー2 の読み合い対戦ゲーム",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "icons": [
+    {
+      "src": "395A2CE0-BDE2-48F7-A878-F891928D4F1D.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "395A2CE0-BDE2-48F7-A878-F891928D4F1D.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
