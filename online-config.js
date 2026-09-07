@@ -15,5 +15,5 @@
  */
 window.HADOUKEN_ONLINE_CONFIG = {
   // Paste your deployed WebSocket URL here:
-  WEBSOCKET_URL: "",
+  WEBSOCKET_URL: "wss://ylb3wopy88.execute-api.ap-northeast-1.amazonaws.com/prod",
 };
