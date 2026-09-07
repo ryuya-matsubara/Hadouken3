@@ -161,6 +161,18 @@ function evalClause(clause, item, names, values) {
     const right = values[m[2]];
     return left !== right;
   }
+  // Numeric comparisons: #a < :v and #a > :v. If the attribute is missing the
+  // comparison is false (mirrors DynamoDB, which does not match absent attrs).
+  if ((m = clause.match(/^(\S+)\s*<\s*(\S+)$/))) {
+    const left = getPath(item, pathTokens(m[1], names));
+    const right = values[m[2]];
+    return left !== undefined && left < right;
+  }
+  if ((m = clause.match(/^(\S+)\s*>\s*(\S+)$/))) {
+    const left = getPath(item, pathTokens(m[1], names));
+    const right = values[m[2]];
+    return left !== undefined && left > right;
+  }
   if ((m = clause.match(/^(\S+)\s*=\s*(\S+)$/))) {
     const left = getPath(item, pathTokens(m[1], names));
     const right = values[m[2]];

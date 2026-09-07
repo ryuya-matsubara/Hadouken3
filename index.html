@@ -104,11 +104,6 @@
   .player-card.self.active {
     box-shadow: 0 0 0 3px var(--accent), 0 0 30px rgba(255,138,0,0.85);
   }
-  .player-card.self .player-name::after {
-    content: " (You)";
-    font-size: 0.72rem;
-    color: var(--accent);
-  }
   .player-name { font-weight: bold; font-size: 1rem; margin-bottom: 4px; }
   .p1 .player-name { color: var(--p1); }
   .p2 .player-name { color: var(--p2); }
@@ -1728,10 +1723,9 @@ const Online = (function () {
       }
       case "opponentReady": {
         applyRoomState(msg.room);
-        // The opponent has chosen; do not surface a textual notice (the ready
-        // badge on their card already conveys this without being noisy).
-        const opp = slot === 1 ? 2 : 1;
-        setReadyBadge(opp, true);
+        // The opponent has chosen, but we intentionally do NOT surface any
+        // "opponent selected" indicator on our side (no textual notice and no
+        // ready badge) so the choice stays hidden until both are in.
         break;
       }
       case "turnResult": {
@@ -1753,7 +1747,6 @@ const Online = (function () {
         applyRoomState(msg.room);
         $("restartBtn").disabled = false;
         $("reselectBtn").disabled = false;
-        toast("キャラクターを選び直してください", "info");
         enterOnlineCharSelect();
         break;
       }
