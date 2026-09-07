@@ -1,0 +1,13 @@
+{
+  "name": "hadouken3-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests for the Hadouken Battle static site (Playwright).",
+  "scripts": {
+    "test": "node hadouken.e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
+  }
+}
