@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "End-to-end tests for Hadouken Battle (online multiplayer + deployed site).",
+  "description": "End-to-end tests for Hadouken Battle (static site + online multiplayer).",
   "scripts": {
+    "test": "node hadouken.e2e.mjs",
     "test:online": "node online.e2e.mjs",
     "test:online-browser": "node online-browser.e2e.mjs"
   },

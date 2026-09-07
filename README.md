@@ -314,7 +314,35 @@ window.HADOUKEN_ONLINE_CONFIG.WEBSOCKET_URL = "ws://127.0.0.1:8090";
 
 ## 技術
 
-- フロントエンドは依存ライブラリなしの単一 HTML ファイル（HTML + CSS + Vanilla JS）＋ 設定ファイル `online-config.js`。ビルド不要。
+- フロントエンドは依存ライブラリなしの単一 HTML ファイル（HTML + CSS + Vanilla JS）＋ 設定ファイル `online-config.js`。ビルド不要（`index.html` を開くだけでローカル対戦は動作）。
 - 共有ルールエンジン `shared/gameEngine.js`（ブラウザ / Node.js 両対応、純粋関数）。
 - バックエンドは AWS SAM + CloudFormation（`backend/`）。Node.js 20.x / DynamoDB / API Gateway WebSocket。
 - 詳細は [`backend/README.md`](backend/README.md) を参照。
+
+## デプロイ（AWS）
+
+- **フロント（静的サイト）**: **S3 + CloudFront** に配信（バケットは非公開、CloudFront の OAC 経由でのみ配信）。手順とスクリプトは [`deploy/`](deploy/) にあります。
+
+  ```bash
+  # アセットの同期 + キャッシュ無効化（インフラ構築済みの場合）
+  ./deploy/deploy.sh
+  ```
+
+  初回のインフラ構築（S3 / OAC / CloudFront / バケットポリシー）は [`deploy/README.md`](deploy/README.md) を参照してください。
+
+- **バックエンド（オンライン対戦）**: AWS SAM で `backend/` をデプロイ（`sam build && sam deploy`、`ap-northeast-1`）。出力された WebSocket URL を `online-config.js` に設定します。詳細は [`backend/README.md`](backend/README.md)。
+- 全体構成図は [`docs/architecture.md`](docs/architecture.md) を参照。
+
+## E2E テスト
+
+[`e2e/`](e2e/) に Playwright / WebSocket ベースの E2E を用意しています。
+
+```bash
+cd e2e
+npm install
+npx playwright install chromium
+# 静的サイト（デプロイ済み URL に対して）
+SITE_URL=https://<distribution>.cloudfront.net/ npm test
+# オンライン対戦バックエンド
+WS_URL=wss://<api-id>.execute-api.ap-northeast-1.amazonaws.com/prod npm run test:online
+```
