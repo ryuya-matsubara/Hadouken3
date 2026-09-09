@@ -120,7 +120,9 @@
   .card { background: var(--panel); border-radius: 14px; padding: 20px; }
   .prompt { text-align: center; font-size: 1.15rem; margin-bottom: 16px; font-weight: bold; }
 
-  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  /* 3 columns: row1 = チャージ/ガード/ブラスト, row2 = メガブラスト/必殺技.
+     All cells are the same size so every action button is an equal square. */
+  .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   button.action {
     padding: 0;
     border: none;
@@ -162,7 +164,7 @@
   #selectScreen .card { padding: 14px; }
   #selectScreen .prompt { margin-bottom: 10px; }
   /* Keep the two icon rows from getting too tall so everything fits. */
-  #selectScreen .actions { gap: 10px; max-width: 300px; margin: 0 auto; }
+  #selectScreen .actions { gap: 10px; max-width: 340px; margin: 0 auto; }
   #selectScreen .action-desc { margin: 10px 0 10px; padding: 10px; min-height: 3.6em; }
 
   .big-btn {
@@ -323,6 +325,7 @@
     object-fit: contain;
   }
   .proj-blast   { width:70px; height:70px; }
+  .proj-mega    { width:92px; height:92px; }
   .proj-special { width:110px; height:110px; }
   /* effects fired by player 2 face the other way */
   .projectile.from-p2 { transform: scaleX(-1); }
@@ -507,8 +510,9 @@
         <div class="hr-item"><b>🟠 エネルギー</b>／最大3つ。ブラストや必殺技で消費</div>
         <div class="hr-item"><b>【アクション】</b></div>
         <div class="hr-item">・<b>チャージ</b>／エネルギーを1溜める</div>
-        <div class="hr-item">・<b>ブラスト</b>／エネルギー1消費。相手がチャージ中なら1ダメージ・ガードで防がれる</div>
+        <div class="hr-item">・<b>ブラスト</b>／エネルギー1消費。相手に1ダメージ・ガードで防がれる</div>
         <div class="hr-item">・<b>ガード</b>／ブラストを防ぐ</div>
+        <div class="hr-item">・<b>メガブラスト</b>／エネルギー2消費。相手に1ダメージ・ガード不能（ブラストと相殺）</div>
         <div class="hr-item">・<b>必殺技</b>／キャラクター固有</div>
       </div>
     </div>
@@ -659,11 +663,13 @@ const MAX_HP = 3;
 
 const TITLE_SRC = "https://github.com/user-attachments/assets/90a270b7-5853-4499-85d5-35a64f5a276b";
 
-// Shared action-select icons (charge / guard / blast are common to all chars).
+// Shared action-select icons (charge / guard / blast / megablast are common to
+// all characters).
 const ICON_SRC = {
-  charge: "https://github.com/user-attachments/assets/234b1b35-454c-4385-b13f-91630002fd77",
-  guard:  "https://github.com/user-attachments/assets/726c330a-e112-42b2-bab7-5fa8acde8760",
-  blast:  "https://github.com/user-attachments/assets/449eaf72-150a-4e69-95a8-441d239d4a5e",
+  charge:    "https://github.com/user-attachments/assets/234b1b35-454c-4385-b13f-91630002fd77",
+  guard:     "https://github.com/user-attachments/assets/726c330a-e112-42b2-bab7-5fa8acde8760",
+  blast:     "https://github.com/user-attachments/assets/c7d20a1f-13c8-456f-a4fb-1f94ba8537b8",
+  megablast: "https://github.com/user-attachments/assets/c0af6115-e883-4f3b-998d-0a79e2168ab0",
 };
 
 // ---- Character roster --------------------------------------------------
@@ -687,8 +693,8 @@ const CHARACTERS = {
     },
     specialFx:   "https://github.com/user-attachments/assets/a1eec8fc-fb2e-45fa-b6d0-f1de471847ce",
     specialIcon: "https://github.com/user-attachments/assets/f96de252-6c23-411b-aebb-34f34f9d8a82",
-    special: { name: "波動拳", cost: 3, dmg: 1, guardable: false, kind: "attack",
-               desc: "ガード不能。相手に1ダメージ" },
+    special: { name: "波動拳", cost: 3, dmg: 1, guardable: false, kind: "attack", attackClass: "pierce",
+               desc: "必ず1ダメージ。ガード・ブラスト・メガブラスト・ギガブラストを無効化" },
   },
   blaze: {
     id: "blaze",
@@ -701,9 +707,9 @@ const CHARACTERS = {
       body:   "https://github.com/user-attachments/assets/77d615e4-f3b0-47b8-bb4a-4e9486223430",
     },
     specialFx:   "https://github.com/user-attachments/assets/ece64b81-6382-41fb-a914-8a5ac569b9ef",
-    specialIcon: "https://github.com/user-attachments/assets/b6ac2b69-17b3-4111-80c2-fed1ed5ecec3",
-    special: { name: "メガブラスト", cost: 2, dmg: 2, guardable: true, kind: "attack",
-               desc: "相手に2ダメージ。ただしガード可能" },
+    specialIcon: "https://github.com/user-attachments/assets/dd12d15e-b5db-432e-87f6-49accbe398a4",
+    special: { name: "ギガブラスト", cost: 3, dmg: 2, guardable: false, kind: "attack", attackClass: "giga",
+               desc: "ガード不能。相手に2ダメージ（ブラスト・メガブラストと相殺）" },
   },
   phantom: {
     id: "phantom",
@@ -738,7 +744,7 @@ const CHARACTERS = {
 };
 
 // Shared blast (ブラスト) effect image used by every character.
-const BLAST_FX = "https://github.com/user-attachments/assets/1b9a0874-895e-4761-b925-87125784333e";
+const BLAST_FX = "https://github.com/user-attachments/assets/64d32ccf-51e6-4207-9147-9ccdeea73e85";
 
 const CHAR_ORDER = ["hadou", "blaze", "phantom", "angel"];
 
@@ -757,7 +763,7 @@ function poseSrc(player, key) {
     if (c.special.kind === "heal") return c.specialFx;
     return p.body;
   }
-  if (key === "blast") return p.body;
+  if (key === "blast" || key === "megablast") return p.body;
   return p.stance;
 }
 function specialFxSrc(player)   { return charOf(player).specialFx; }
@@ -781,9 +787,10 @@ const IMG_CACHE = {};
 
 // ---- Action definitions (special is resolved per character) ------------
 function actionMeta(player, key) {
-  if (key === "charge") return { label: "チャージ", cost: 0, icon: ICON_SRC.charge, energy: "+1", desc: "エネルギーを1溜める" };
-  if (key === "blast")  return { label: "ブラスト", cost: 1, icon: ICON_SRC.blast, energy: "-1", desc: "相手に1ダメージ。ガードで防がれる" };
-  if (key === "guard")  return { label: "ガード",   cost: 0, icon: ICON_SRC.guard, energy: "0",  desc: "ブラスト（およびメガブラスト）を防ぐ" };
+  if (key === "charge")    return { label: "チャージ", cost: 0, icon: ICON_SRC.charge, energy: "+1", desc: "エネルギーを1溜める" };
+  if (key === "blast")     return { label: "ブラスト", cost: 1, icon: ICON_SRC.blast, energy: "-1", desc: "相手に1ダメージ。ガードで防がれる" };
+  if (key === "guard")     return { label: "ガード",   cost: 0, icon: ICON_SRC.guard, energy: "0",  desc: "ブラストを防ぐ" };
+  if (key === "megablast") return { label: "メガブラスト", cost: 2, icon: ICON_SRC.megablast, energy: "-2", desc: "相手に1ダメージ。ガード不能（ブラストと相殺）" };
   // special
   const sp = charOf(player).special;
   return { label: sp.name, cost: sp.cost, icon: charOf(player).specialIcon,
@@ -982,7 +989,9 @@ function goToSelect(player) {
   $("selectConfirmBtn").disabled = true;
   const container = $("actionButtons");
   container.innerHTML = "";
-  for (const key of ["charge", "blast", "guard", "special"]) {
+  // Row 1: チャージ / ガード / ブラスト   Row 2: メガブラスト / 必殺技
+  // (a 3-column grid lays these out as two rows of equal squares)
+  for (const key of ["charge", "guard", "blast", "megablast", "special"]) {
     const a = actionMeta(player, key);
     const btn = document.createElement("button");
     btn.className = "action";
@@ -1061,49 +1070,44 @@ function resolveTurn(a1, a2) {
   const events = [];
   const logs = [];
 
+  // Common-action damage (mirrors shared/gameEngine.js).
+  const BLAST_DMG = 1, MEGA_DMG = 1;
+  const LABELS = { charge: "チャージ", blast: "ブラスト", guard: "ガード", megablast: "メガブラスト" };
+  const actName = (p, a) => (a === "special" ? charOf(p).special.name : LABELS[a]);
+
+  // Attack class of a player's action: "blast" | "mega" | "giga" | "pierce" | null.
+  const classOf = (p, a) => {
+    if (a === "blast") return "blast";
+    if (a === "megablast") return "mega";
+    if (a === "special") {
+      const sp = charOf(p).special;
+      if (sp.kind === "attack") return sp.attackClass || (sp.guardable ? "mega" : "pierce");
+    }
+    return null;
+  };
+  const isBlastTypeClass = (cls) => cls === "blast" || cls === "mega" || cls === "giga";
+  const cls1 = classOf(1, a1), cls2 = classOf(2, a2);
+
   // Determine per-player "attack intent" for VOID interaction.
-  const isAttack = (p, a) => a === "blast" || (a === "special" && charOf(p).special.kind === "attack");
+  const isAttack = (p, a) => a === "blast" || a === "megablast" ||
+    (a === "special" && charOf(p).special.kind === "attack");
 
-  // "Blast-type" projectiles cancel each other out (ブラスト同士 / ブラストと
-  // メガブラスト). A blast-type is a plain blast or a guardable attack special
-  // (メガブラスト). 波動拳 is unguardable/piercing and does NOT clash here.
-  const isBlastType = (p, a) =>
-    a === "blast" || (a === "special" && charOf(p).special.kind === "attack" && charOf(p).special.guardable);
-  const clash = isBlastType(1, a1) && isBlastType(2, a2);
-
-  // 波動拳 = an unguardable/piercing attack special. It overpowers the
-  // opponent's blast-type attack: that attack fails (ブラスト/メガブラストは失敗)
-  // while 波動拳 still lands.
-  const isPierce = (p, a) =>
-    a === "special" && charOf(p).special.kind === "attack" && !charOf(p).special.guardable;
-  const p1Pierce = isPierce(1, a1), p2Pierce = isPierce(2, a2);
+  // Blast-type projectiles (blast / mega / giga) mutually cancel. 波動拳
+  // (pierce) does NOT clash — it nullifies blast-types instead.
+  const clash = isBlastTypeClass(cls1) && isBlastTypeClass(cls2);
+  const p1Pierce = cls1 === "pierce", p2Pierce = cls2 === "pierce";
 
   // Damage dealt by an attacking action against opponent's action.
-  // Returns damage number (0 if fully defended) plus whether it was "blocked".
-  function attackResult(attacker, action, defender, defAction) {
-    if (action === "blast") {
-      // Blast is stopped only by a guard. Against any other action it lands
-      // for 1 damage. This also means an incoming blast hits a VOID user
-      // ("相手が攻撃してきた場合、HPは減る").
+  function attackResult(attacker, cls, defAction) {
+    if (cls === "blast") {
+      // Plain blast is the only guard-blockable projectile.
       if (defAction === "guard") return { dmg: 0, blocked: true };
-      return { dmg: 1, blocked: false };
+      return { dmg: BLAST_DMG, blocked: false };
     }
-    if (action === "special") {
-      const sp = charOf(attacker).special;
-      if (sp.kind === "attack") {
-        if (sp.guardable && defAction === "guard") return { dmg: 0, blocked: true };
-        return { dmg: sp.dmg, blocked: false };
-      }
-    }
+    if (cls === "mega") return { dmg: MEGA_DMG, blocked: false };      // unguardable
+    if (cls === "giga" || cls === "pierce") return { dmg: charOf(attacker).special.dmg, blocked: false };
     return { dmg: 0, blocked: false, whiff: true };
   }
-
-  // Handle special non-damage kinds first (heal / drain), they resolve for the
-  // acting player regardless of opponent (VOID also drains).
-  // We collect events then apply.
-
-  // `logs` holds only special notices (ガード成功！ / 相殺！). Per-player HP/EN
-  // changes are reported separately as delta lines in the battle scene.
 
   // Heal (Angel)
   for (const p of [1, 2]) {
@@ -1113,8 +1117,7 @@ function resolveTurn(a1, a2) {
     }
   }
 
-  // VOID drain: reduces opponent energy by 1. If opponent attacked this turn,
-  // the VOID user also takes HP damage from that attack.
+  // VOID drain: reduces opponent energy by 1.
   for (const p of [1, 2]) {
     const a = p === 1 ? a1 : a2;
     if (a === "special" && charOf(p).special.kind === "drain") {
@@ -1123,33 +1126,32 @@ function resolveTurn(a1, a2) {
     }
   }
 
-  // Blast-type vs blast-type: mutual cancel. Neither side loses HP and there
-  // is no knockback.
+  // Blast-type vs blast-type: mutual cancel. No HP change, no knockback.
   if (clash) {
     logs.push("相殺！");
-    return { events, logs, clash: true, isAttack: { 1: isAttack(1, a1), 2: isAttack(2, a2) } };
+    return { events, logs, clash: true, fails: { 1: false, 2: false },
+             isAttack: { 1: isAttack(1, a1), 2: isAttack(2, a2) } };
   }
 
-  // Attacks (blast / attack-specials). Resolve both directions.
-  const res1 = attackResult(1, a1, 2, a2);
-  const res2 = attackResult(2, a2, 1, a1);
+  const res1 = attackResult(1, cls1, a2);
+  const res2 = attackResult(2, cls2, a1);
 
-  // A blast-type attack fails if the opponent used 波動拳 (piercing).
-  const p1Fails = isBlastType(1, a1) && p2Pierce;
-  const p2Fails = isBlastType(2, a2) && p1Pierce;
+  // A blast-type attack fails if the opponent used 波動拳 (pierce).
+  const p1Fails = isBlastTypeClass(cls1) && p2Pierce;
+  const p2Fails = isBlastTypeClass(cls2) && p1Pierce;
 
-  if (a1 === "blast" || (a1 === "special" && sp1.kind === "attack")) {
+  if (cls1) {
     if (p1Fails) {
-      logs.push(`プレイヤー1の${a1 === "special" ? sp1.name : "ブラスト"}は失敗！`);
+      logs.push(`プレイヤー1の${actName(1, a1)}は無効化！`);
     } else if (res1.blocked) {
       logs.push(`プレイヤー2のガード成功！`);
     } else if (res1.dmg > 0) {
       events.push({ type: "dmg", target: 2, amount: res1.dmg, from: 1, action: a1 });
     }
   }
-  if (a2 === "blast" || (a2 === "special" && sp2.kind === "attack")) {
+  if (cls2) {
     if (p2Fails) {
-      logs.push(`プレイヤー2の${a2 === "special" ? sp2.name : "ブラスト"}は失敗！`);
+      logs.push(`プレイヤー2の${actName(2, a2)}は無効化！`);
     } else if (res2.blocked) {
       logs.push(`プレイヤー1のガード成功！`);
     } else if (res2.dmg > 0) {
@@ -1194,8 +1196,8 @@ function ensureLoaded(src, timeoutMs = 2000) {
 
 function preloadForBattle(a1, a2) {
   const urls = new Set([poseSrc(1, a1), poseSrc(2, a2)]);
-  if (a1 === "blast") urls.add(blastFxSrc());
-  if (a2 === "blast") urls.add(blastFxSrc());
+  if (a1 === "blast" || a1 === "megablast") urls.add(blastFxSrc());
+  if (a2 === "blast" || a2 === "megablast") urls.add(blastFxSrc());
   if (a1 === "special") urls.add(specialFxSrc(1));
   if (a2 === "special") urls.add(specialFxSrc(2));
   return Promise.all([...urls].map(ensureLoaded));
@@ -1214,16 +1216,18 @@ function flashStage() {
 // ground at bottom:70px).
 const PROJECTILE_CENTER = 150;
 
-// kind: "blast" or "special"
+// kind: "blast" | "megablast" | "special"
 function spawnProjectile(fromPlayer, kind) {
   const stage = $("stage");
   const el = document.createElement("img");
   const isSpecial = kind === "special";
-  el.className = "projectile " + (isSpecial ? "proj-special" : "proj-blast");
+  const isMega = kind === "megablast";
+  el.className = "projectile " + (isSpecial ? "proj-special" : isMega ? "proj-mega" : "proj-blast");
   if (fromPlayer === 2) el.classList.add("from-p2");
+  // Megablast reuses the shared blast effect image, rendered larger.
   el.src = isSpecial ? specialFxSrc(fromPlayer) : blastFxSrc();
   const goRight = fromPlayer === 1;
-  const size = isSpecial ? 110 : 70;
+  const size = isSpecial ? 110 : isMega ? 92 : 70;
   el.style.bottom = (PROJECTILE_CENTER - size / 2) + "px";
   el.style.animation = `${goRight ? "travelR" : "travelL"} 0.6s linear forwards`;
   stage.appendChild(el);
@@ -1439,7 +1443,10 @@ function goNextTurn() {
 
 async function playChoreography(a1, a2, outcome) {
   const sp1 = charOf(1).special, sp2 = charOf(2).special;
-  const isAttackAction = (p, a) => a === "blast" || (a === "special" && charOf(p).special.kind === "attack");
+  const isAttackAction = (p, a) => a === "blast" || a === "megablast" ||
+    (a === "special" && charOf(p).special.kind === "attack");
+  // Which projectile sprite to fire for an attacking action.
+  const projKind = (a) => (a === "special" ? "special" : a === "megablast" ? "megablast" : "blast");
 
   const p1Attacks = isAttackAction(1, a1);
   const p2Attacks = isAttackAction(2, a2);
@@ -1448,8 +1455,8 @@ async function playChoreography(a1, a2, outcome) {
   // no knockback (there are no damage events for a clash).
   if (outcome.clash) {
     injectHalfKeyframes();
-    const p1 = spawnProjectile(1, a1 === "special" ? "special" : "blast");
-    const p2 = spawnProjectile(2, a2 === "special" ? "special" : "blast");
+    const p1 = spawnProjectile(1, projKind(a1));
+    const p2 = spawnProjectile(2, projKind(a2));
     p1.style.animation = "travelRhalf 0.4s linear forwards";
     p2.style.animation = "travelLhalf 0.4s linear forwards";
     await delay(400);
@@ -1473,12 +1480,12 @@ async function playChoreography(a1, a2, outcome) {
   const fails = outcome.fails || { 1: false, 2: false };
   const projectiles = [];
   if (p1Attacks) {
-    const el = spawnProjectile(1, a1 === "special" ? "special" : "blast");
+    const el = spawnProjectile(1, projKind(a1));
     if (fails[1]) el.style.animationDuration = "0.28s";
     projectiles.push(el);
   }
   if (p2Attacks) {
-    const el = spawnProjectile(2, a2 === "special" ? "special" : "blast");
+    const el = spawnProjectile(2, projKind(a2));
     if (fails[2]) el.style.animationDuration = "0.28s";
     projectiles.push(el);
   }

@@ -72,13 +72,42 @@ test("special 波動拳 (Hadou): unguardable, 1 dmg, costs 3 energy", () => {
   assert.equal(o.after.energy[1], 0, "costs 3 energy");
 });
 
-test("special メガブラスト (Blaze): 2 dmg but guardable", () => {
-  const guarded = resolve("blaze", "blaze", "special", "guard", stats(3, 3, 2, 0));
-  assert.equal(guarded.after.hp[2], 3, "guard blocks メガブラスト");
+test("special ギガブラスト (Blaze): 2 dmg, unguardable, costs 3", () => {
+  // ギガブラスト is unguardable: guarding does NOT block it.
+  const guarded = resolve("blaze", "angel", "special", "guard", stats(3, 3, 3, 0));
+  assert.equal(guarded.after.hp[2], 1, "guard does not block ギガブラスト (2 dmg)");
 
-  const hit = resolve("blaze", "hadou", "special", "charge", stats(3, 3, 2, 0));
-  assert.equal(hit.after.hp[2], 1, "メガブラスト deals 2 damage");
-  assert.equal(hit.after.energy[1], 0, "costs 2 energy");
+  const hit = resolve("blaze", "hadou", "special", "charge", stats(3, 3, 3, 0));
+  assert.equal(hit.after.hp[2], 1, "ギガブラスト deals 2 damage");
+  assert.equal(hit.after.energy[1], 0, "costs 3 energy");
+});
+
+// ---------------------------------------------------------------------------
+// New common action: メガブラスト
+// ---------------------------------------------------------------------------
+test("megablast: 1 dmg, unguardable, costs 2 energy", () => {
+  const guarded = resolve("hadou", "hadou", "megablast", "guard", stats(3, 3, 2, 0));
+  assert.equal(guarded.after.hp[2], 2, "guard does NOT block megablast (1 dmg)");
+  assert.equal(guarded.after.energy[1], 0, "megablast costs 2 energy");
+
+  const bad = resolve("hadou", "hadou", "megablast", "charge", stats(3, 3, 1, 0));
+  assert.equal(bad.valid, false, "megablast needs 2 energy");
+  assert.equal(bad.invalid[1], "not_enough_energy");
+});
+
+test("clash tiers: blast vs megablast, megablast vs megablast, giga vs mega all clash", () => {
+  const bm = resolve("hadou", "hadou", "blast", "megablast", stats(3, 3, 1, 2));
+  assert.equal(bm.clash, true, "blast vs megablast clash");
+  assert.equal(bm.after.hp[1], 3);
+  assert.equal(bm.after.hp[2], 3);
+
+  const mm = resolve("hadou", "hadou", "megablast", "megablast", stats(3, 3, 2, 2));
+  assert.equal(mm.clash, true, "megablast vs megablast clash");
+
+  const gm = resolve("blaze", "hadou", "special", "megablast", stats(3, 3, 3, 2));
+  assert.equal(gm.clash, true, "gigablast vs megablast clash");
+  assert.equal(gm.after.hp[1], 3);
+  assert.equal(gm.after.hp[2], 3);
 });
 
 test("special ヒール (Angel): heals 1 HP, capped at MAX_HP, costs 2", () => {
@@ -103,11 +132,22 @@ test("VOID user still takes damage if opponent attacked", () => {
   assert.equal(o.after.hp[1], 2, "VOID does not defend against a blast");
 });
 
-test("波動拳 overpowers opponent blast-type (opponent attack fails)", () => {
+test("波動拳 nullifies opponent blast-type (opponent attack fails)", () => {
   const o = resolve("hadou", "hadou", "special", "blast", stats(3, 3, 3, 1));
   assert.equal(o.after.hp[2], 2, "波動拳 lands");
-  assert.equal(o.after.hp[1], 3, "opponent blast fails, no damage to P1");
-  assert.ok(o.logs.some((l) => l.includes("失敗")));
+  assert.equal(o.after.hp[1], 3, "opponent blast is nullified, no damage to P1");
+  assert.ok(o.logs.some((l) => l.includes("無効化")));
+});
+
+test("波動拳 nullifies megablast and gigablast too", () => {
+  // vs megablast
+  const vm = resolve("hadou", "hadou", "special", "megablast", stats(3, 3, 3, 2));
+  assert.equal(vm.after.hp[2], 2, "波動拳 lands 1");
+  assert.equal(vm.after.hp[1], 3, "megablast nullified");
+  // vs gigablast (Blaze special)
+  const vg = resolve("hadou", "blaze", "special", "special", stats(3, 3, 3, 3));
+  assert.equal(vg.after.hp[2], 2, "波動拳 lands 1 on Blaze");
+  assert.equal(vg.after.hp[1], 3, "gigablast nullified");
 });
 
 // ---------------------------------------------------------------------------
@@ -122,12 +162,12 @@ test("charge increases energy by 1, capped at MAX_ENERGY", () => {
 // ---------------------------------------------------------------------------
 // Simultaneous actions (both attack, trade damage)
 // ---------------------------------------------------------------------------
-test("simultaneous: 波動拳 (piercing) vs メガブラスト -> blast-type fails, pierce lands", () => {
-  // Both attack. Hadou's 波動拳 is piercing; Blaze's メガブラスト is blast-type
-  // and therefore fails against the pierce.
-  const o = resolve("hadou", "blaze", "special", "special", stats(3, 3, 3, 2));
+test("simultaneous: 波動拳 (pierce) vs ギガブラスト -> blast-type nullified, pierce lands", () => {
+  // Both attack. Hadou's 波動拳 pierces; Blaze's ギガブラスト is blast-type
+  // and therefore is nullified by the pierce.
+  const o = resolve("hadou", "blaze", "special", "special", stats(3, 3, 3, 3));
   assert.equal(o.after.hp[2], 2, "波動拳 lands on P2");
-  assert.equal(o.after.hp[1], 3, "メガブラスト fails against 波動拳");
+  assert.equal(o.after.hp[1], 3, "ギガブラスト nullified by 波動拳");
 });
 
 test("simultaneous: piercing 波動拳 vs blast -> only piercing lands", () => {
@@ -169,8 +209,12 @@ test("validateAction guards energy and names", () => {
   assert.equal(engine.validateAction("hadou", "blast", 0).ok, false);
   assert.equal(engine.validateAction("hadou", "blast", 1).ok, true);
   assert.equal(engine.validateAction("hadou", "nope", 3).ok, false);
-  assert.equal(engine.validateAction("blaze", "special", 2).ok, true);
-  assert.equal(engine.validateAction("blaze", "special", 1).ok, false);
+  // Blaze's ギガブラスト now costs 3.
+  assert.equal(engine.validateAction("blaze", "special", 3).ok, true);
+  assert.equal(engine.validateAction("blaze", "special", 2).ok, false);
+  // megablast is a valid common action costing 2.
+  assert.equal(engine.validateAction("hadou", "megablast", 2).ok, true);
+  assert.equal(engine.validateAction("hadou", "megablast", 1).ok, false);
 });
 
 // ---------------------------------------------------------------------------
@@ -191,8 +235,8 @@ test("engine is deterministic: same inputs -> identical outcome", () => {
 // Game end
 // ---------------------------------------------------------------------------
 test("game ends when a player's HP reaches 0; winner set", () => {
-  // P1=Blaze at 3HP, P2=Hadou at 2HP. メガブラスト for 2 dmg on P2 -> 0.
-  const o = resolve("blaze", "hadou", "special", "charge", stats(3, 2, 2, 0));
+  // P1=Blaze uses ギガブラスト (2 dmg) on P2 at 2HP -> 0.
+  const o = resolve("blaze", "hadou", "special", "charge", stats(3, 2, 3, 0));
   assert.equal(o.after.hp[2], 0);
   assert.equal(o.finished, true);
   assert.equal(o.winner, 1);
@@ -214,7 +258,7 @@ test("no KO: match continues, winner null", () => {
 });
 
 test("HP never goes below 0", () => {
-  // P2 has only 1 HP and takes メガブラスト (2 dmg) -> clamped to 0, not -1.
-  const o = resolve("blaze", "hadou", "special", "charge", stats(3, 1, 2, 0));
+  // P2 has only 1 HP and takes megablast (2 dmg) -> clamped to 0, not -1.
+  const o = resolve("hadou", "hadou", "megablast", "charge", stats(3, 1, 2, 0));
   assert.equal(o.after.hp[2], 0, "clamped at 0, not negative");
 });

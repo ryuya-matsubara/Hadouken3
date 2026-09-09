@@ -169,49 +169,34 @@ test("commitResolvedTurn: only one of two racing commits succeeds (version CAS)"
 test("full turn to KO then rematch resets state once", async () => {
   reset();
   await beginMatch("6666", "blaze", "hadou");
-  // Give Blaze energy by charging twice (2 turns) so it can use メガブラスト.
-  // Turn 1: both charge.
-  await rooms.recordAction("6666", 1, 1, "charge");
-  let r = await rooms.recordAction("6666", 1, 2, "charge");
-  let out = engine.resolveTurn({ 1: "blaze", 2: "hadou" }, "charge", "charge", r.hp, r.energy);
-  r = await rooms.commitResolvedTurn("6666", r.version, {
-    hp: out.after.hp, energy: out.after.energy, turn: 2, finished: false, winner: null,
-  });
-  // Turn 2: both charge again -> Blaze now has 2 energy.
-  await rooms.recordAction("6666", 2, 1, "charge");
-  r = await rooms.recordAction("6666", 2, 2, "charge");
-  out = engine.resolveTurn({ 1: "blaze", 2: "hadou" }, "charge", "charge", r.hp, r.energy);
-  r = await rooms.commitResolvedTurn("6666", r.version, {
-    hp: out.after.hp, energy: out.after.energy, turn: 3, finished: false, winner: null,
-  });
-  assert.equal(r.energy["1"], 2);
-  // Turns 3 & 4: Blaze メガブラスト twice (2 dmg each) -> Hadou 3->1->... need 2 hits.
-  // Turn 3.
-  await rooms.recordAction("6666", 3, 1, "special");
-  r = await rooms.recordAction("6666", 3, 2, "charge");
-  out = engine.resolveTurn({ 1: "blaze", 2: "hadou" }, "special", "charge", r.hp, r.energy);
-  r = await rooms.commitResolvedTurn("6666", r.version, {
-    hp: out.after.hp, energy: out.after.energy, turn: out.finished ? 3 : 4, finished: out.finished, winner: out.winner,
-  });
-  assert.equal(r.hp["2"], 1, "Hadou down to 1 after first メガブラスト");
-  // Blaze has 0 energy now; charge twice more to fire again.
-  await rooms.recordAction("6666", 4, 1, "charge");
-  r = await rooms.recordAction("6666", 4, 2, "charge");
-  out = engine.resolveTurn({ 1: "blaze", 2: "hadou" }, "charge", "charge", r.hp, r.energy);
-  r = await rooms.commitResolvedTurn("6666", r.version, { hp: out.after.hp, energy: out.after.energy, turn: 5, finished: false, winner: null });
-  await rooms.recordAction("6666", 5, 1, "charge");
-  r = await rooms.recordAction("6666", 5, 2, "charge");
-  out = engine.resolveTurn({ 1: "blaze", 2: "hadou" }, "charge", "charge", r.hp, r.energy);
-  r = await rooms.commitResolvedTurn("6666", r.version, { hp: out.after.hp, energy: out.after.energy, turn: 6, finished: false, winner: null });
-  // Turn 6: fire the finishing メガブラスト.
-  await rooms.recordAction("6666", 6, 1, "special");
-  r = await rooms.recordAction("6666", 6, 2, "charge");
-  out = engine.resolveTurn({ 1: "blaze", 2: "hadou" }, "special", "charge", r.hp, r.energy);
+  // ギガブラスト now deals 2 dmg (costs 3 energy). Hadou starts at 3 HP, so it
+  // takes TWO ギガブラスト to KO. Helper to play one turn and commit.
+  let r, turn = 1;
+  const playTurn = async (a1, a2) => {
+    await rooms.recordAction("6666", turn, 1, a1);
+    r = await rooms.recordAction("6666", turn, 2, a2);
+    const out = engine.resolveTurn({ 1: "blaze", 2: "hadou" }, a1, a2, r.hp, r.energy);
+    r = await rooms.commitResolvedTurn("6666", r.version, {
+      hp: out.after.hp, energy: out.after.energy,
+      turn: out.finished ? turn : turn + 1, finished: out.finished, winner: out.winner,
+    });
+    if (!out.finished) turn += 1;
+    return out;
+  };
+  // Charge to 3 energy, fire ギガブラスト (Hadou 3 -> 1).
+  await playTurn("charge", "charge");
+  await playTurn("charge", "charge");
+  await playTurn("charge", "charge");
+  assert.equal(r.energy["1"], 3, "Blaze charged to 3 energy");
+  await playTurn("special", "charge");
+  assert.equal(r.hp["2"], 1, "Hadou down to 1 after first ギガブラスト");
+  // Charge again and fire the finishing ギガブラスト (1 -> 0 KO).
+  await playTurn("charge", "charge");
+  await playTurn("charge", "charge");
+  await playTurn("charge", "charge");
+  const out = await playTurn("special", "charge");
   assert.equal(out.finished, true);
   assert.equal(out.winner, 1);
-  r = await rooms.commitResolvedTurn("6666", r.version, {
-    hp: out.after.hp, energy: out.after.energy, turn: 6, finished: true, winner: 1,
-  });
   assert.equal(r.status, "finished");
   assert.equal(r.winner, 1);
 

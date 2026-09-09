@@ -31,17 +31,24 @@
   var MAX_HP = 3;
 
   // ---- Character roster (rules only; artwork lives in the frontend) --------
+  // Attack specials carry an `attackClass`:
+  //   "blast" | "mega" | "giga"  -> "blast-type" projectiles that mutually
+  //                                  cancel (相殺) with any other blast-type.
+  //   "pierce"                    -> 波動拳: unblockable AND nullifies every
+  //                                  blast-type (they fail); still deals its dmg.
   // kind: "attack" | "heal" | "drain"
   var CHARACTERS = {
     hadou: {
       id: "hadou",
       name: "Hadou",
-      special: { name: "波動拳", cost: 3, dmg: 1, guardable: false, kind: "attack" },
+      // 波動拳: cost 3, always deals 1, guard-proof, nullifies all blast-types.
+      special: { name: "波動拳", cost: 3, dmg: 1, guardable: false, kind: "attack", attackClass: "pierce" },
     },
     blaze: {
       id: "blaze",
       name: "Blaze",
-      special: { name: "メガブラスト", cost: 2, dmg: 2, guardable: true, kind: "attack" },
+      // ギガブラスト: cost 3, deals 2, unguardable, clashes with blast + mega.
+      special: { name: "ギガブラスト", cost: 3, dmg: 2, guardable: false, kind: "attack", attackClass: "giga" },
     },
     phantom: {
       id: "phantom",
@@ -56,7 +63,17 @@
   };
 
   var CHAR_ORDER = ["hadou", "blaze", "phantom", "angel"];
-  var ACTIONS = ["charge", "blast", "guard", "special"];
+  // "megablast" is a common action available to every character.
+  var ACTIONS = ["charge", "blast", "guard", "megablast", "special"];
+
+  // Damage / guardability of the common attack actions.
+  var BLAST_DMG = 1;      // ブラスト: 1 dmg, blockable by guard
+  var MEGA_DMG = 1;       // メガブラスト: 1 dmg, unguardable
+
+  // Display labels for the common actions (used in battle log messages).
+  var LABELS = {
+    charge: "チャージ", blast: "ブラスト", guard: "ガード", megablast: "メガブラスト",
+  };
 
   // ---- Validation helpers ---------------------------------------------------
   function isValidCharId(id) {
@@ -71,9 +88,24 @@
     if (action === "charge") return 0;
     if (action === "blast") return 1;
     if (action === "guard") return 0;
+    if (action === "megablast") return 2;
     if (action === "special") return CHARACTERS[charId].special.cost;
     return 0;
   }
+
+  // The "attack class" of an action for a player (for clash/pierce logic).
+  // Returns "blast" | "mega" | "giga" | "pierce" | null (non-attack).
+  function attackClassOf(charId, action) {
+    if (action === "blast") return "blast";
+    if (action === "megablast") return "mega";
+    if (action === "special") {
+      var sp = CHARACTERS[charId].special;
+      if (sp.kind === "attack") return sp.attackClass || (sp.guardable ? "mega" : "pierce");
+    }
+    return null;
+  }
+  // A blast-type projectile clashes (相殺) with any other blast-type.
+  function isBlastTypeClass(cls) { return cls === "blast" || cls === "mega" || cls === "giga"; }
 
   // Can a player afford this action given their current energy?
   function canAfford(charId, action, energy) {
@@ -142,36 +174,37 @@
     var logs = [];
 
     function special(p) { return (p === 1 ? c1 : c2).special; }
+    function actName(p, a) { return a === "special" ? special(p).name : LABELS[a]; }
+
+    // Attack class per player: "blast" | "mega" | "giga" | "pierce" | null.
+    var cls1 = attackClassOf(chars[1], a1);
+    var cls2 = attackClassOf(chars[2], a2);
 
     var isAttack = function (p, a) {
-      return a === "blast" || (a === "special" && special(p).kind === "attack");
+      return a === "blast" || a === "megablast" ||
+        (a === "special" && special(p).kind === "attack");
     };
 
-    // "Blast-type" projectiles clash (plain blast or a guardable attack special
-    // = メガブラスト). 波動拳 is unguardable/piercing and does NOT clash.
-    var isBlastType = function (p, a) {
-      return a === "blast" ||
-        (a === "special" && special(p).kind === "attack" && special(p).guardable);
-    };
-    var clash = isBlastType(1, a1) && isBlastType(2, a2);
+    // Blast-type projectiles (blast / mega / giga) mutually cancel. 波動拳
+    // (pierce) does NOT clash — it nullifies blast-types instead.
+    var clash = isBlastTypeClass(cls1) && isBlastTypeClass(cls2);
 
-    // 波動拳 = unguardable/piercing attack special. Overpowers a blast-type.
-    var isPierce = function (p, a) {
-      return a === "special" && special(p).kind === "attack" && !special(p).guardable;
-    };
-    var p1Pierce = isPierce(1, a1), p2Pierce = isPierce(2, a2);
+    var p1Pierce = cls1 === "pierce", p2Pierce = cls2 === "pierce";
 
-    function attackResult(attacker, action, defAction) {
-      if (action === "blast") {
+    // Damage of an attacking action against the opponent's action.
+    function attackResult(attacker, cls, defAction) {
+      if (cls === "blast") {
+        // Plain blast is the only guard-blockable projectile.
         if (defAction === "guard") return { dmg: 0, blocked: true };
-        return { dmg: 1, blocked: false };
+        return { dmg: BLAST_DMG, blocked: false };
       }
-      if (action === "special") {
-        var sp = special(attacker);
-        if (sp.kind === "attack") {
-          if (sp.guardable && defAction === "guard") return { dmg: 0, blocked: true };
-          return { dmg: sp.dmg, blocked: false };
-        }
+      if (cls === "mega") {
+        // メガブラスト: unguardable.
+        return { dmg: MEGA_DMG, blocked: false };
+      }
+      if (cls === "giga" || cls === "pierce") {
+        // Attack specials (ギガブラスト / 波動拳): unguardable.
+        return { dmg: special(attacker).dmg, blocked: false };
       }
       return { dmg: 0, blocked: false, whiff: true };
     }
@@ -196,27 +229,30 @@
     var fails = { 1: false, 2: false };
 
     if (clash) {
+      // Two blast-type projectiles (any of blast/mega/giga) cancel out.
       logs.push("相殺！");
     } else {
-      var res1 = attackResult(1, a1, a2);
-      var res2 = attackResult(2, a2, a1);
+      var res1 = attackResult(1, cls1, a2);
+      var res2 = attackResult(2, cls2, a1);
 
-      var p1Fails = isBlastType(1, a1) && p2Pierce;
-      var p2Fails = isBlastType(2, a2) && p1Pierce;
+      // A blast-type attack fails if the opponent used 波動拳 (pierce), which
+      // nullifies blast / megablast / gigablast.
+      var p1Fails = isBlastTypeClass(cls1) && p2Pierce;
+      var p2Fails = isBlastTypeClass(cls2) && p1Pierce;
       fails = { 1: p1Fails, 2: p2Fails };
 
-      if (a1 === "blast" || (a1 === "special" && sp1.kind === "attack")) {
+      if (cls1) {
         if (p1Fails) {
-          logs.push("プレイヤー1の" + (a1 === "special" ? sp1.name : "ブラスト") + "は失敗！");
+          logs.push("プレイヤー1の" + actName(1, a1) + "は無効化！");
         } else if (res1.blocked) {
           logs.push("プレイヤー2のガード成功！");
         } else if (res1.dmg > 0) {
           events.push({ type: "dmg", target: 2, amount: res1.dmg, from: 1, action: a1 });
         }
       }
-      if (a2 === "blast" || (a2 === "special" && sp2.kind === "attack")) {
+      if (cls2) {
         if (p2Fails) {
-          logs.push("プレイヤー2の" + (a2 === "special" ? sp2.name : "ブラスト") + "は失敗！");
+          logs.push("プレイヤー2の" + actName(2, a2) + "は無効化！");
         } else if (res2.blocked) {
           logs.push("プレイヤー1のガード成功！");
         } else if (res2.dmg > 0) {
@@ -285,6 +321,7 @@
     isValidCharId: isValidCharId,
     isValidAction: isValidAction,
     actionCost: actionCost,
+    attackClassOf: attackClassOf,
     canAfford: canAfford,
     validateAction: validateAction,
     resolveTurn: resolveTurn,

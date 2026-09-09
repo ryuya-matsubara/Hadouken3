@@ -220,6 +220,60 @@ try {
   check('can start a new match with new characters after change',
     restart.room.status === 'playing' && restart.room.chars['1'] === 'blaze');
 
+  // --- New rules: メガブラスト (unguardable, 2 dmg) ---
+  {
+    const r = String(Math.floor(1000 + Math.random() * 9000));
+    const x = new Client('R1'); await x.open();
+    const y = new Client('R2'); await y.open();
+    x.send('createRoom', { roomId: r }); await x.waitFor('roomCreated');
+    y.send('joinRoom', { roomId: r }); await y.waitFor('roomJoined'); await x.waitFor('roomJoined');
+    x.send('selectCharacter', { charId: 'hadou' });
+    y.send('selectCharacter', { charId: 'hadou' });
+    const sx = await x.waitFor('battleStart'); await y.waitFor('battleStart');
+    let turn = sx.room.turn;
+    // Charge twice -> 2 energy each.
+    for (let i = 0; i < 2; i++) {
+      x.send('submitAction', { move: 'charge', turn });
+      y.send('submitAction', { move: 'charge', turn });
+      const rr = await x.waitFor('turnResult'); await y.waitFor('turnResult');
+      turn = rr.result.nextTurn;
+    }
+    // P1 megablast vs P2 guard -> unguardable, P2 takes 2 dmg.
+    x.send('submitAction', { move: 'megablast', turn });
+    y.send('submitAction', { move: 'guard', turn });
+    const rx = await x.waitFor('turnResult'); await y.waitFor('turnResult');
+    check('megablast is unguardable and deals 1 damage',
+      rx.result.after.hp['2'] === rx.result.before.hp['2'] - 1);
+    x.close(); y.close();
+  }
+
+  // --- New rules: blast vs megablast clash (both survive) ---
+  {
+    const r = String(Math.floor(1000 + Math.random() * 9000));
+    const x = new Client('C1'); await x.open();
+    const y = new Client('C2'); await y.open();
+    x.send('createRoom', { roomId: r }); await x.waitFor('roomCreated');
+    y.send('joinRoom', { roomId: r }); await y.waitFor('roomJoined'); await x.waitFor('roomJoined');
+    x.send('selectCharacter', { charId: 'hadou' });
+    y.send('selectCharacter', { charId: 'hadou' });
+    const sx = await x.waitFor('battleStart'); await y.waitFor('battleStart');
+    let turn = sx.room.turn;
+    for (let i = 0; i < 2; i++) {
+      x.send('submitAction', { move: 'charge', turn });
+      y.send('submitAction', { move: 'charge', turn });
+      const rr = await x.waitFor('turnResult'); await y.waitFor('turnResult');
+      turn = rr.result.nextTurn;
+    }
+    x.send('submitAction', { move: 'blast', turn });
+    y.send('submitAction', { move: 'megablast', turn });
+    const rx = await x.waitFor('turnResult'); await y.waitFor('turnResult');
+    check('blast vs megablast clash (no damage to either)',
+      rx.result.clash === true &&
+      rx.result.after.hp['1'] === rx.result.before.hp['1'] &&
+      rx.result.after.hp['2'] === rx.result.before.hp['2']);
+    x.close(); y.close();
+  }
+
   // --- Error handling: invalid room code is rejected ---
   const c = new Client('P3');
   await c.open();
