@@ -324,7 +324,7 @@
     position:absolute; z-index:20; pointer-events:none;
     object-fit: contain;
   }
-  .proj-blast   { width:70px; height:70px; }
+  .proj-blast   { width:48px; height:48px; }
   .proj-mega    { width:92px; height:92px; }
   .proj-special { width:110px; height:110px; }
   /* effects fired by player 2 face the other way */
@@ -745,6 +745,8 @@ const CHARACTERS = {
 
 // Shared blast (ブラスト) effect image used by every character.
 const BLAST_FX = "https://github.com/user-attachments/assets/64d32ccf-51e6-4207-9147-9ccdeea73e85";
+// Megablast uses its own effect image (distinct from the plain blast effect).
+const MEGA_FX = "https://github.com/user-attachments/assets/1b9a0874-895e-4761-b925-87125784333e";
 
 const CHAR_ORDER = ["hadou", "blaze", "phantom", "angel"];
 
@@ -768,11 +770,12 @@ function poseSrc(player, key) {
 }
 function specialFxSrc(player)   { return charOf(player).specialFx; }
 function blastFxSrc()           { return BLAST_FX; }
+function megaFxSrc()            { return MEGA_FX; }
 
 // Preload every image up-front and KEEP the Image objects alive in a cache.
 const IMG_CACHE = {};
 (function preloadImages() {
-  const urls = [TITLE_SRC, BLAST_FX, ...Object.values(ICON_SRC)];
+  const urls = [TITLE_SRC, BLAST_FX, MEGA_FX, ...Object.values(ICON_SRC)];
   for (const id of CHAR_ORDER) {
     const c = CHARACTERS[id];
     urls.push(c.icon, c.specialFx, c.specialIcon, ...Object.values(c.poses));
@@ -1196,8 +1199,10 @@ function ensureLoaded(src, timeoutMs = 2000) {
 
 function preloadForBattle(a1, a2) {
   const urls = new Set([poseSrc(1, a1), poseSrc(2, a2)]);
-  if (a1 === "blast" || a1 === "megablast") urls.add(blastFxSrc());
-  if (a2 === "blast" || a2 === "megablast") urls.add(blastFxSrc());
+  if (a1 === "blast") urls.add(blastFxSrc());
+  if (a2 === "blast") urls.add(blastFxSrc());
+  if (a1 === "megablast") urls.add(megaFxSrc());
+  if (a2 === "megablast") urls.add(megaFxSrc());
   if (a1 === "special") urls.add(specialFxSrc(1));
   if (a2 === "special") urls.add(specialFxSrc(2));
   return Promise.all([...urls].map(ensureLoaded));
@@ -1224,10 +1229,11 @@ function spawnProjectile(fromPlayer, kind) {
   const isMega = kind === "megablast";
   el.className = "projectile " + (isSpecial ? "proj-special" : isMega ? "proj-mega" : "proj-blast");
   if (fromPlayer === 2) el.classList.add("from-p2");
-  // Megablast reuses the shared blast effect image, rendered larger.
-  el.src = isSpecial ? specialFxSrc(fromPlayer) : blastFxSrc();
+  // Special uses the character FX; megablast uses its own FX; plain blast uses
+  // the shared blast FX.
+  el.src = isSpecial ? specialFxSrc(fromPlayer) : isMega ? megaFxSrc() : blastFxSrc();
   const goRight = fromPlayer === 1;
-  const size = isSpecial ? 110 : isMega ? 92 : 70;
+  const size = isSpecial ? 110 : isMega ? 92 : 48;
   el.style.bottom = (PROJECTILE_CENTER - size / 2) + "px";
   el.style.animation = `${goRight ? "travelR" : "travelL"} 0.6s linear forwards`;
   stage.appendChild(el);
