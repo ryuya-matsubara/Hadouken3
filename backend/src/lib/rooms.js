@@ -81,7 +81,15 @@ async function createRoom(roomId, connectionId) {
     new PutCommand({
       TableName: ROOMS_TABLE,
       Item: item,
-      ConditionExpression: "attribute_not_exists(roomId)",
+      // A code is reusable when it is free OR the existing room is stale: its
+      // TTL has already passed. DynamoDB's TTL sweeper is best-effort and can
+      // lag for hours, and a $disconnect is not guaranteed to fire, so an
+      // abandoned room could otherwise keep a code occupied. Allowing takeover
+      // of an expired room lets players reuse codes immediately.
+      ConditionExpression:
+        "attribute_not_exists(roomId) OR #ttl < :now",
+      ExpressionAttributeNames: { "#ttl": "ttl" },
+      ExpressionAttributeValues: { ":now": nowEpoch() },
     })
   );
   return item;

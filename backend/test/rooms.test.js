@@ -53,6 +53,20 @@ test("createRoom: same code cannot be created twice", async () => {
   );
 });
 
+test("createRoom: a stale (expired-TTL) room can be reclaimed with the same code", async () => {
+  reset();
+  await rooms.createRoom("1234", "connA");
+  // Simulate an abandoned room whose $disconnect never fired: force its TTL
+  // into the past. (nowEpoch() is fixed at 1000 in this test harness.)
+  const store = mockDoc._tables["hadouken-online-Rooms"];
+  const key = Object.keys(store)[0];
+  store[key].ttl = 1; // in the past relative to nowEpoch()=1000
+  // A new player can now take over the same code.
+  const reclaimed = await rooms.createRoom("1234", "connB");
+  assert.equal(reclaimed.status, "waiting");
+  assert.equal(reclaimed.p1Conn, "connB");
+});
+
 test("joinRoom: succeeds once, then a third player is rejected", async () => {
   reset();
   await rooms.createRoom("2222", "connA");
