@@ -510,7 +510,7 @@
         <div class="hr-item"><b>🟠 エネルギー</b>／最大3つ。ブラストや必殺技で消費</div>
         <div class="hr-item"><b>【アクション】</b></div>
         <div class="hr-item">・<b>チャージ</b>／エネルギーを1溜める</div>
-        <div class="hr-item">・<b>ブラスト</b>／エネルギー1消費。相手に1ダメージ・ガードで防がれる</div>
+        <div class="hr-item">・<b>ブラスト</b>／エネルギー1消費。相手に1ダメージ</div>
         <div class="hr-item">・<b>ガード</b>／ブラストを防ぐ</div>
         <div class="hr-item">・<b>メガブラスト</b>／エネルギー2消費。相手に1ダメージ・ガード不能（ブラストと相殺）</div>
         <div class="hr-item">・<b>必殺技</b>／キャラクター固有</div>
@@ -670,6 +670,8 @@ const ICON_SRC = {
   guard:     "https://github.com/user-attachments/assets/726c330a-e112-42b2-bab7-5fa8acde8760",
   blast:     "https://github.com/user-attachments/assets/c7d20a1f-13c8-456f-a4fb-1f94ba8537b8",
   megablast: "https://github.com/user-attachments/assets/c0af6115-e883-4f3b-998d-0a79e2168ab0",
+  // Info-only "check the opponent's special" button (not a real action).
+  oppSpecial: "https://github.com/user-attachments/assets/1397fd96-030d-49d8-8417-bf43f7b234ce",
 };
 
 // ---- Character roster --------------------------------------------------
@@ -794,6 +796,14 @@ function actionMeta(player, key) {
   if (key === "blast")     return { label: "ブラスト", cost: 1, icon: ICON_SRC.blast, energy: "-1", desc: "相手に1ダメージ。ガードで防がれる" };
   if (key === "guard")     return { label: "ガード",   cost: 0, icon: ICON_SRC.guard, energy: "0",  desc: "ブラストを防ぐ" };
   if (key === "megablast") return { label: "メガブラスト", cost: 2, icon: ICON_SRC.megablast, energy: "-2", desc: "相手に1ダメージ。ガード不能（ブラストと相殺）" };
+  if (key === "oppSpecial") {
+    // Info-only entry: describe the OPPONENT's special so the player can check
+    // it. It is never a selectable action (info: true).
+    const opp = player === 1 ? 2 : 1;
+    const osp = charOf(opp).special;
+    return { label: "相手の必殺技", info: true, icon: ICON_SRC.oppSpecial,
+             desc: `${osp.name}／${osp.desc}` };
+  }
   // special
   const sp = charOf(player).special;
   return { label: sp.name, cost: sp.cost, icon: charOf(player).specialIcon,
@@ -993,16 +1003,23 @@ function goToSelect(player) {
   const container = $("actionButtons");
   container.innerHTML = "";
   // Row 1: チャージ / ガード / ブラスト   Row 2: メガブラスト / 必殺技
-  // (a 3-column grid lays these out as two rows of equal squares)
-  for (const key of ["charge", "guard", "blast", "megablast", "special"]) {
+  // Row 3: 相手の必殺技 (info-only; shows the opponent's special description and
+  //        can NEVER be confirmed — it is not a real action).
+  // (a 3-column grid lays these out into rows of equal squares)
+  for (const key of ["charge", "guard", "blast", "megablast", "special", "oppSpecial"]) {
     const a = actionMeta(player, key);
     const btn = document.createElement("button");
     btn.className = "action";
     btn.dataset.key = key;
-    // Unaffordable actions can still be selected (so their description shows),
-    // but they are visually dimmed and the 決定 button stays disabled.
-    const canAfford = state.energy[player] >= a.cost;
-    if (!canAfford) btn.classList.add("unaffordable");
+    if (key === "oppSpecial") {
+      // Purely informational: never dimmed for energy, never affordable.
+      btn.classList.add("info-only");
+    } else {
+      // Unaffordable actions can still be selected (so their description shows),
+      // but they are visually dimmed and the 決定 button stays disabled.
+      const canAfford = state.energy[player] >= a.cost;
+      if (!canAfford) btn.classList.add("unaffordable");
+    }
     btn.title = `${a.label}`;
     btn.setAttribute("aria-label", a.label);
     btn.innerHTML = `<img class="icon" src="${a.icon}" alt="" decoding="async" />`;
@@ -1017,9 +1034,17 @@ function goToSelect(player) {
 // their description but cannot be confirmed.
 function pickAction(player, key) {
   const a = actionMeta(player, key);
-  const canAfford = state.energy[player] >= a.cost;
   document.querySelectorAll("#actionButtons .action").forEach((el) =>
     el.classList.toggle("selected", el.dataset.key === key));
+  // "相手の必殺技" is info-only: show the opponent's special description and
+  // keep the 決定 button disabled — it can never be committed as an action.
+  if (a.info) {
+    $("actionDesc").textContent = `${a.label}／${a.desc}`;
+    pendingAction = null;
+    $("selectConfirmBtn").disabled = true;
+    return;
+  }
+  const canAfford = state.energy[player] >= a.cost;
   // e.g. "VOID／エネルギー: -1／相手のエネルギーを1減らす"
   $("actionDesc").textContent = `${a.label}／エネルギー: ${a.energy}／${a.desc}`;
   if (canAfford) {
